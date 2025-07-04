@@ -1,0 +1,246 @@
+------- 1
+select f.codigo
+from freguesias f join concelhos c on f.CONCELHO = c.CODIGO
+where c.NOME='Porto' and f.NOME = 'Sé'
+
+------- 2
+select partido, votos
+from votacoes v
+where v.FREGUESIA = 
+    (select f.codigo
+    from freguesias f, concelhos c
+    where f.NOME='Sé' and c.NOME='Porto'
+    and f.CONCELHO=c.CODIGO)
+
+------- 3
+select count(nome) as qtd
+from freguesias
+where nome like '%Vilar%'
+
+------- 4
+select f.NOME
+from freguesias f join concelhos c on f.CONCELHO=c.CODIGO
+where c.NOME='Espinho'
+
+------- 5
+select d.NOME, d.CODIGO
+from distritos d, concelhos c, freguesias f
+where d.CODIGO=c.DISTRITO and c.CODIGO=f.CONCELHO and f.NOME='Sé' and c.NOME='Porto'
+
+------- 6
+select l.partido, l.mandatos
+from listas l, distritos d
+where l.distrito = d.codigo and d.nome='Porto'
+order by l.MANDATOS desc
+
+------- 7
+select d.nome, p.votantes, p.abstencoes
+from participacoes p join distritos d on p.DISTRITO=d.CODIGO
+where p.ABSTENCOES > (p.votantes * 0.75)
+
+------- 8
+select  f.codigo, f.nome
+from freguesias f, concelhos c, distritos d, votacoes v
+where f.CONCELHO=c.CODIGO and c.DISTRITO=d.CODIGO and d.REGIAO='M'
+and v.FREGUESIA=f.CODIGO and v.VOTOS=0 and v.PARTIDO='PSN'
+
+------- 9
+select sigla
+from partidos
+except
+select partido
+from listas, distritos
+where distritos.CODIGO=listas.DISTRITO and distritos.NOME='Lisboa'
+
+------- 10
+select c.codigo, v.partido, sum(v.votos)
+from concelhos c join freguesias f join votacoes v on c.CODIGO = f.CONCELHO and v.FREGUESIA=f.CODIGO
+group by c.codigo, v.partido
+
+------- 11
+select d.nome, v.partido, sum(v.votos)
+from distritos d join concelhos c join freguesias f join votacoes v 
+on d.CODIGO=c.DISTRITO and c.CODIGO = f.CONCELHO and v.FREGUESIA=f.CODIGO
+group by d.nome, v.partido
+
+------- 12
+select v.partido, sum(v.votos)
+from distritos d join concelhos c join freguesias f join votacoes v 
+on d.CODIGO=c.DISTRITO and c.CODIGO = f.CONCELHO and v.FREGUESIA=f.CODIGO
+group by v.partido
+
+------- 13
+select sum(v.VOTOS) as VOTOS, v.PARTIDO
+from votacoes v join freguesias f join concelhos c join distritos d
+on d.CODIGO=c.DISTRITO and c.CODIGO=f.CONCELHO and f.CODIGO=v.FREGUESIA
+group by v.PARTIDO
+order by VOTOS desc
+LIMIT 5
+
+------- 14
+select c.NOME, count(f.CODIGO) as qtd_de_freguesias
+from concelhos c join freguesias f on f.CONCELHO=c.CODIGO
+group by f.CONCELHO
+order by qtd_de_freguesias desc
+limit 1
+
+select d.nome, count(*) as qtd
+from distritos d join concelhos c
+on d.codigo=c.distrito
+group by d.codigo
+order by qtd desc
+limit 1
+
+------- 15
+select avg(qtd_de_freguesias)
+from (select c.NOME, count(f.CODIGO) as qtd_de_freguesias
+from concelhos c join freguesias f on f.CONCELHO=c.CODIGO
+group by f.CONCELHO
+order by qtd_de_freguesias desc)
+
+------- 16
+
+with qtd_freguesias_por_concelho as 
+(select c.DISTRITO as distrito, f.CONCELHO as concelho, c.NOME as concelho_nome, count(f.CODIGO) as qtd_freguesias
+from freguesias f join concelhos c on f.CONCELHO=c.CODIGO
+group by concelho)
+
+select c1.distrito, c1.concelho_nome, c2.concelho_nome, c1.qtd_freguesias
+from qtd_freguesias_por_concelho c1, qtd_freguesias_por_concelho c2 
+where c1.distrito=c2.distrito and c1.qtd_freguesias=c2.qtd_freguesias and c1.concelho<c2.concelho
+
+------- 17
+select c.nome
+from concelhos c join distritos d join participacoes p
+on c.DISTRITO=d.CODIGO and p.DISTRITO=d.CODIGO 
+where d.CODIGO=
+(select p.distrito as dist
+from participacoes p
+order by votantes desc
+limit 1)
+
+
+------ 18
+select f.nome, v.partido, v.votos
+from freguesias f join votacoes v
+on v.FREGUESIA = f.CODIGO
+where v.VOTOS = 
+(select max(votos)
+from votacoes)
+
+
+----- 19
+select l.partido, sum(l.mandatos) as soma
+from listas l join distritos d on d.CODIGO=l.DISTRITO
+where d.NOME like "%o%" or d.nome like "%O%"
+group by l.partido
+having soma=0
+
+
+----- 20
+with votacoes_por_distrito as 
+(select d.nome as distrito, v.partido as partido, sum(v.votos) as votos
+from distritos d join concelhos c join freguesias f join votacoes v 
+on d.CODIGO=c.DISTRITO and c.CODIGO = f.CONCELHO and v.FREGUESIA=f.CODIGO
+group by d.nome, v.partido)
+
+
+select v.distrito, p.sigla, p.designacao, v.votos
+from votacoes_por_distrito v join partidos p 
+on v.partido=p.sigla
+where (v.partido, v.votos) in
+(select partido, max(votos)
+from votacoes_por_distrito
+group by distrito)
+
+
+----- 21 CONFERIR
+-- Vencedores
+with vencedores as (
+select c.nome as concelho, v.freguesia, v.partido, v.votos
+from votacoes v join freguesias f join concelhos c
+on v.FREGUESIA=f.CODIGO and f.CONCELHO=c.CODIGO
+where (v.freguesia, votos) in
+(select freguesia, max(votos)
+from votacoes 
+group by freguesia)
+)
+
+-- Concelhos com apenas um partido na coluna de ganhador por freguesia
+select concelho, partido, count(distinct partido) as qtd
+from vencedores
+group by concelho
+having qtd=1
+
+
+
+----- outra versão
+with vencedores_por_freguesia as
+(select v.freguesia, v.partido, v.votos
+from votacoes v
+where (v.freguesia, v.partido, v.votos) in
+(select freguesia, partido, max(votos)
+from votacoes
+group by freguesia))
+
+select c.nome, concelho, count(distinct partido) as partidos_vencedores
+from distritos d join concelhos c join freguesias f join vencedores_por_freguesia v 
+on v.freguesia=f.codigo and f.concelho=c.codigo and c.distrito=d.codigo
+where d.nome="Porto"
+group by concelho
+having partidos_vencedores=1
+
+
+
+----- 22
+
+with votacoes_por_concelho as 
+(select c.codigo, c.nome, c.distrito, v.partido, sum(v.votos) as soma
+from concelhos c join freguesias f join votacoes v 
+on c.CODIGO = f.CONCELHO and v.FREGUESIA=f.CODIGO
+group by c.codigo, v.partido)
+
+
+select distrito, partido
+from 
+(select *
+from votacoes_por_concelho
+where (codigo, partido, soma) in
+(select codigo, partido, max(soma)
+from votacoes_por_concelho
+group by codigo))
+group by distrito
+having count(distinct partido)=1
+
+
+
+----- 23
+select c.nome as concelho, v.partido, sum(v.votos) as qtd
+from votacoes v join freguesias f join concelhos c
+on v.FREGUESIA=f.CODIGO and f.CONCELHO=c.CODIGO
+group by concelho, v.partido
+having qtd=0
+
+-- outra versao
+
+select f.concelho, v.partido
+from votacoes v join freguesias f
+on v.freguesia = f.codigo 
+group by f.concelho, v.partido
+having sum(v.votos)=0
+
+
+
+----- 24
+select a.partido, a.votos, (a.votos*100.00/x.total_votos) as percentual_votos, b.mandatos, (b.mandatos*100.00/y.total_mandatos) as percentual_mandatos, ((a.votos*100.00/x.total_votos)-(b.mandatos*100.00/y.total_mandatos)) as diferenca 
+from 
+(select sum(votos) as total_votos
+from votacoes) as x,
+(select sum(mandatos) as total_mandatos
+from listas) as y,
+(select partido, sum(votos) as votos
+from votacoes
+group by partido) as a natural join
+(select partido, sum(mandatos) as mandatos
+from listas
+group by partido) as b
